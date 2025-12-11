@@ -139,10 +139,7 @@ local function resolveLuauDefinitionsFile(): string?
 	local home = process.env.HOME or process.env.USERPROFILE
 	if home ~= nil and home ~= "" then
 		table.insert(candidates, joinMany(home, { ".local", "share", "luau-lsp", "roblox.d.luau" }))
-		table.insert(
-			candidates,
-			joinMany(home, { "Library", "Application Support", "luau-lsp", "roblox.d.luau" })
-		)
+		table.insert(candidates, joinMany(home, { "Library", "Application Support", "luau-lsp", "roblox.d.luau" }))
 		table.insert(candidates, joinMany(home, { ".config", "luau-lsp", "roblox.d.luau" }))
 	end
 
