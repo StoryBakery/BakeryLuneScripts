@@ -3,14 +3,14 @@ version = "0.1.0"
 license = "MIT"
 includes = [
     "pesde.toml",
-    "scripts/WatchDarklua.luau",
+    "scripts/init.luau",
 ]
 
 [target]
 environment = "lune"
 
 [target.scripts]
-watch_darklua = "scripts/WatchDarklua.luau"
+watch_darklua = "scripts/init.luau"
 
 [indices]
 default = "https://github.com/pesde-pkg/index"

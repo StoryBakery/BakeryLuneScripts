@@ -3,14 +3,14 @@ version = "0.1.0"
 license = "MIT"
 includes = [
     "pesde.toml",
-    "scripts/CheckSyntax.luau",
+    "scripts/init.luau",
 ]
 
 [target]
 environment = "lune"
 
 [target.scripts]
-check_syntax = "scripts/CheckSyntax.luau"
+check_syntax = "scripts/init.luau"
 
 [indices]
 default = "https://github.com/pesde-pkg/index"

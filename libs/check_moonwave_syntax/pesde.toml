@@ -3,14 +3,14 @@ version = "0.1.0"
 license = "MIT"
 includes = [
     "pesde.toml",
-    "scripts/CheckMoonwaveSyntax.luau",
+    "scripts/init.luau",
 ]
 
 [target]
 environment = "lune"
 
 [target.scripts]
-check_moonwave_syntax = "scripts/CheckMoonwaveSyntax.luau"
+check_moonwave_syntax = "scripts/init.luau"
 
 [indices]
 default = "https://github.com/pesde-pkg/index"
