@@ -1,0 +1,20 @@
+name = "story_bakery/check_syntax"
+version = "0.1.0"
+license = "MIT"
+includes = [
+    "pesde.toml",
+    "scripts/CheckSyntax.luau",
+]
+
+[target]
+environment = "lune"
+
+[target.scripts]
+check_syntax = "scripts/CheckSyntax.luau"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
+
+[engines]
+pesde = "^0.7.1"
+lune = "^0.10.4"

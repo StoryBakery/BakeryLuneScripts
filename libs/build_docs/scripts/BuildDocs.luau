@@ -7,8 +7,26 @@
 
 local process = require("@lune/process")
 
--- moonwave 주석 금지 태그 검사 (CheckForbiddenTags 재사용)
-require("./CheckForbiddenTags")
+-- moonwave 주석 금지 태그 검사
+local function runCheckMoonwaveSyntax()
+	local ok, err = pcall(require, ".pesde/check_moonwave_syntax/CheckMoonwaveSyntax")
+	if ok then
+		return
+	end
+
+	local workspacePath = "../check_moonwave_syntax/scripts/CheckMoonwaveSyntax"
+	local workspaceOk, workspaceErr = pcall(require, workspacePath)
+	if workspaceOk then
+		return
+	end
+
+	print("[오류] Moonwave 금지 태그 검사 스크립트를 불러오지 못했습니다.")
+	print(`.pesde/check_moonwave_syntax 실패: {tostring(err)}`)
+	print(`워크스페이스 경로 "{workspacePath}" 실패: {tostring(workspaceErr)}`)
+	process.exit(1)
+end
+
+runCheckMoonwaveSyntax()
 
 local NPX_COMMAND = if process.os == "windows" then "npx.cmd" else "npx"
 

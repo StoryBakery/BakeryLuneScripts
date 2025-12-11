@@ -1,0 +1,15 @@
+name = "story_bakery/bakery_lune_scripts"
+version = "0.1.0"
+license = "MIT"
+private = true
+workspace_members = ["libs/*"]
+
+[target]
+environment = "lune"
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
+
+[engines]
+pesde = "^0.7.1"
+lune = "^0.10.4"

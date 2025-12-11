@@ -1,0 +1,23 @@
+name = "story_bakery/build_docs"
+version = "0.1.0"
+license = "MIT"
+includes = [
+    "pesde.toml",
+    "scripts/BuildDocs.luau",
+]
+
+[target]
+environment = "lune"
+
+[target.scripts]
+build_docs = "scripts/BuildDocs.luau"
+
+[dependencies]
+check_moonwave_syntax = { workspace = "story_bakery/check_moonwave_syntax", version = "^", target = "lune" }
+
+[indices]
+default = "https://github.com/pesde-pkg/index"
+
+[engines]
+pesde = "^0.7.1"
+lune = "^0.10.4"

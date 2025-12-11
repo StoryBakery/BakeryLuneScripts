@@ -8,7 +8,7 @@ local task = require("@lune/task")
 
 -- ---- 기본 설정 (환경변수/인자에서 재정의 가능) -------------------------
 local SRC_DIR = "src"
-local OUT_DIR = "darklua_build"
+local OUT_DIR = "out"
 local PROJECT_IN = "default.project.json"
 local PROJECT_OUT = "place.project.json"
 local DARKLUA_BIN = process.env.DARKLUA or "darklua"
