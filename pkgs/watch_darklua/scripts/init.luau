@@ -176,14 +176,11 @@ local function runDarklua(inPath, outPath)
 		table.insert(params, DARKLUA_CONFIG)
 	end
 	local stdioKind = VERBOSE and "inherit" or "default"
-	local result =
-		process.exec(DARKLUA_BIN, params, { stdio = { stdout = stdioKind, stderr = "default" } })
+	local result = process.exec(DARKLUA_BIN, params, { stdio = { stdout = stdioKind, stderr = "default" } })
 	if result.ok then
 		return true
 	else
-		local msg = (result.stderr and #result.stderr > 0) and result.stderr
-			or result.stdout
-			or "(no details)"
+		local msg = (result.stderr and #result.stderr > 0) and result.stderr or result.stdout or "(no details)"
 		print(("[경고] darklua 실패: %s\n└─ %s"):format(inPath, msg))
 		-- 원본 그대로 복사
 		copyFile(inPath, outPath)
@@ -254,11 +251,7 @@ end
 
 local function writeBuildProject()
 	if not fs.isFile(PROJECT_IN) then
-		print(
-			"[정보] "
-				.. PROJECT_IN
-				.. " 이(가) 없어 Rojo 프로젝트 리라이팅은 건너뜁니다."
-		)
+		print("[정보] " .. PROJECT_IN .. " 이(가) 없어 Rojo 프로젝트 리라이팅은 건너뜁니다.")
 		return
 	end
 	local src = fs.readFile(PROJECT_IN)
