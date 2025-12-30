@@ -6,26 +6,11 @@
 	bakery-dev-handbook 서브모듈을 libs 경로에 유지합니다.
 ]]
 
-local fs = require("@lune/fs")
 local process = require("@lune/process")
 
-local MODULE_ROOT_CANDIDATES = {
-	"pkgs/setup_configs/src",
-	".pesde/setup_configs/src",
-	"src",
-}
-
-local function resolveModuleRoot(): string?
-	for _, candidate in ipairs(MODULE_ROOT_CANDIDATES) do
-		if fs.isDir(candidate .. "/modules") then
-			return candidate
-		end
-	end
-	return nil
-end
-
-local function loadModule(root: string, name: string)
-	local ok, moduleOrErr = pcall(require, root .. "/modules/" .. name)
+local function loadModule(name: string)
+	local modulePath = "./src/modules/" .. name
+	local ok, moduleOrErr = pcall(require, modulePath)
 	if not ok then
 		print(`[오류] 모듈 "{name}" 를 불러오지 못했습니다.`)
 		print(tostring(moduleOrErr))
@@ -34,17 +19,11 @@ local function loadModule(root: string, name: string)
 	return moduleOrErr
 end
 
-local moduleRoot = resolveModuleRoot()
-if not moduleRoot then
-	print("[오류] setup_configs 모듈 경로를 찾지 못했습니다.")
-	process.exit(1)
-end
-
-local Config = loadModule(moduleRoot, "Config")
-local FsUtils = loadModule(moduleRoot, "FsUtils")
-local parseOption = loadModule(moduleRoot, "Args")
-local Installer = loadModule(moduleRoot, "Installer")
-local Submodule = loadModule(moduleRoot, "Submodule")
+local Config = loadModule("Config")
+local FsUtils = loadModule("FsUtils")
+local parseOption = loadModule("Args")
+local Installer = loadModule("Installer")
+local Submodule = loadModule("Submodule")
 
 local optionName = parseOption(Config.DefaultOption)
 

@@ -5,6 +5,10 @@ local function trim(value: string): string
 	return value:gsub("%s+$", "")
 end
 
+local function normalizePath(path: string): string
+	return path:gsub("\\", "/")
+end
+
 local function runGit(args: { string }): (boolean, string, string)
 	local okExec, resultOrErr = pcall(process.exec, "git", args, { capture = true })
 	if not okExec then
@@ -59,6 +63,70 @@ local function getSubmoduleUrl(name: string): string?
 	return trim(stdout)
 end
 
+local function listSubmoduleEntries(): { [string]: string }
+	local ok, stdout = runGit({ "config", "-f", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$" })
+	if not ok then
+		return {}
+	end
+
+	local entries: { [string]: string } = {}
+	for line in stdout:gmatch("[^\r\n]+") do
+		local key, value = line:match("^(%S+)%s+(.+)$")
+		if key and value then
+			local name = key:match("^submodule%.(.+)%.path$")
+			if name then
+				entries[name] = value
+			end
+		end
+	end
+
+	return entries
+end
+
+local function deriveSubmoduleName(path: string): string
+	local normalized = normalizePath(path)
+	local cleaned = normalized:gsub("^%./", ""):gsub("/+$", "")
+	local name = cleaned:match("([^/]+)$") or cleaned
+	if name == nil or name == "" then
+		return "submodule"
+	end
+	return name
+end
+
+local function resolveSubmoduleName(path: string): string
+	local normalizedPath = normalizePath(path)
+	local baseName = deriveSubmoduleName(normalizedPath)
+	local entries = listSubmoduleEntries()
+
+	local existingPath = entries[baseName]
+	if existingPath == nil or normalizePath(existingPath) == normalizedPath then
+		return baseName
+	end
+
+	local suffix = 2
+	while true do
+		local candidate = baseName .. "-" .. tostring(suffix)
+		if entries[candidate] == nil then
+			return candidate
+		end
+		suffix += 1
+	end
+end
+
+local function buildSubmoduleAddArgs(name: string, url: string, path: string, force: boolean): { string }
+	local args = { "submodule", "add", "--name", name }
+	if force then
+		table.insert(args, "-f")
+	end
+	table.insert(args, url)
+	table.insert(args, path)
+	return args
+end
+
+local function hasSubmoduleGitDir(name: string): boolean
+	return fs.isDir(".git/modules/" .. name)
+end
+
 local function ensureSubmodule(info, fsUtils)
 	if not isGitRepoRoot() then
 		return { ok = true, status = "skipped", reason = "not_git" }
@@ -69,29 +137,33 @@ local function ensureSubmodule(info, fsUtils)
 		fsUtils.mkdirp(parentDir)
 	end
 
-	local name = findSubmoduleNameByPath(info.Path)
+	local existingName = findSubmoduleNameByPath(info.Path)
+	local name = existingName or resolveSubmoduleName(info.Path)
 	local added = false
 
-	if not name then
+	if not existingName then
 		if fs.isDir(info.Path) or fs.isFile(info.Path) then
 			if isGitRepo(info.Path) then
-				local okAdd, _, err = runGit({ "submodule", "add", "-f", info.Url, info.Path })
+				local okAdd, _, err = runGit(buildSubmoduleAddArgs(name, info.Url, info.Path, true))
 				if not okAdd then
 					return { ok = false, status = "git_failed", action = "submodule add", detail = err }
 				end
 				added = true
-				name = findSubmoduleNameByPath(info.Path)
 			else
 				return { ok = false, status = "path_conflict" }
 			end
 		else
-			local okAdd, _, err = runGit({ "submodule", "add", info.Url, info.Path })
+			local forceAdd = hasSubmoduleGitDir(name)
+			local okAdd, _, err = runGit(buildSubmoduleAddArgs(name, info.Url, info.Path, forceAdd))
 			if not okAdd then
 				return { ok = false, status = "git_failed", action = "submodule add", detail = err }
 			end
 			added = true
-			name = findSubmoduleNameByPath(info.Path)
 		end
+	end
+
+	if not name then
+		name = findSubmoduleNameByPath(info.Path)
 	end
 
 	if name then
