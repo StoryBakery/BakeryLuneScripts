@@ -338,7 +338,6 @@ local function watchLoop(prev)
 	end
 end
 
--- 실행
 writeBuildProject()
 startRojoServe()
 startSourcemapWatch()

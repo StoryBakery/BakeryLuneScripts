@@ -1,4 +1,4 @@
-name = "story_bakery/validate_moonwave"
+name = "story_bakery/setup_configs"
 version = "0.1.0"
 license = "MIT"
 includes = [
@@ -10,7 +10,7 @@ includes = [
 environment = "lune"
 
 [target.scripts]
-validate_moonwave = "src/init.luau"
+setup_configs = "src/init.luau"
 
 [indices]
 default = "https://github.com/pesde-pkg/index"
