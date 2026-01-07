@@ -1,5 +1,9 @@
-local fs = require("@lune/fs")
-local process = require("@lune/process")
+--[[
+	Git 서브모듈을 추가하고 최신 상태로 맞추는 모듈입니다.
+]]
+
+local FileSystem = require("@lune/fs")
+local Process = require("@lune/process")
 
 local function trim(value: string): string
 	return value:gsub("%s+$", "")
@@ -9,8 +13,18 @@ local function normalizePath(path: string): string
 	return path:gsub("\\", "/")
 end
 
+local function hasGit(): boolean
+	local okExec, resultOrErr = pcall(Process.exec, "git", { "--version" }, { capture = true })
+	if not okExec then
+		return false
+	end
+
+	local result = resultOrErr
+	return result.ok
+end
+
 local function runGit(args: { string }): (boolean, string, string)
-	local okExec, resultOrErr = pcall(process.exec, "git", args, { capture = true })
+	local okExec, resultOrErr = pcall(Process.exec, "git", args, { capture = true })
 	if not okExec then
 		return false, "", tostring(resultOrErr)
 	end
@@ -20,7 +34,7 @@ local function runGit(args: { string }): (boolean, string, string)
 end
 
 local function isGitRepoRoot(): boolean
-	return fs.isDir(".git") or fs.isFile(".git")
+	return FileSystem.isDir(".git") or FileSystem.isFile(".git")
 end
 
 local function isGitRepo(path: string): boolean
@@ -32,7 +46,13 @@ local function isGitRepo(path: string): boolean
 end
 
 local function findSubmoduleNameByPath(path: string): string?
-	local ok, stdout = runGit({ "config", "-f", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$" })
+	local ok, stdout = runGit({
+		"config",
+		"-f",
+		".gitmodules",
+		"--get-regexp",
+		"^submodule\\..*\\.path$",
+	})
 	if not ok then
 		return nil
 	end
@@ -64,7 +84,13 @@ local function getSubmoduleUrl(name: string): string?
 end
 
 local function listSubmoduleEntries(): { [string]: string }
-	local ok, stdout = runGit({ "config", "-f", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$" })
+	local ok, stdout = runGit({
+		"config",
+		"-f",
+		".gitmodules",
+		"--get-regexp",
+		"^submodule\\..*\\.path$",
+	})
 	if not ok then
 		return {}
 	end
@@ -113,7 +139,12 @@ local function resolveSubmoduleName(path: string): string
 	end
 end
 
-local function buildSubmoduleAddArgs(name: string, url: string, path: string, force: boolean): { string }
+local function buildSubmoduleAddArgs(
+	name: string,
+	url: string,
+	path: string,
+	force: boolean
+): { string }
 	local args = { "submodule", "add", "--name", name }
 	if force then
 		table.insert(args, "-f")
@@ -124,17 +155,40 @@ local function buildSubmoduleAddArgs(name: string, url: string, path: string, fo
 end
 
 local function hasSubmoduleGitDir(name: string): boolean
-	return fs.isDir(".git/modules/" .. name)
+	return FileSystem.isDir(".git/modules/" .. name)
 end
 
-local function ensureSubmodule(info, fsUtils)
-	if not isGitRepoRoot() then
-		return { ok = true, status = "skipped", reason = "not_git" }
+local function resolveRemoteHead(path: string): string?
+	local okHead, head = runGit({ "-C", path, "rev-parse", "origin/HEAD" })
+	if okHead then
+		return trim(head)
 	end
 
-	local parentDir = fsUtils.dirname(info.Path)
+	local okMain, mainHead = runGit({ "-C", path, "rev-parse", "origin/main" })
+	if okMain then
+		return trim(mainHead)
+	end
+
+	local okMaster, masterHead = runGit({ "-C", path, "rev-parse", "origin/master" })
+	if okMaster then
+		return trim(masterHead)
+	end
+
+	return nil
+end
+
+local function ensureSubmodule(info, fileSystemUtils)
+	if not hasGit() then
+		return { IsOk = true, Status = "Skipped", Reason = "MissingGit" }
+	end
+
+	if not isGitRepoRoot() then
+		return { IsOk = true, Status = "Skipped", Reason = "NotGitRepo" }
+	end
+
+	local parentDir = fileSystemUtils.GetDirectoryName(info.Path)
 	if parentDir ~= "" then
-		fsUtils.mkdirp(parentDir)
+		fileSystemUtils.MakeDirectoryRecursive(parentDir)
 	end
 
 	local existingName = findSubmoduleNameByPath(info.Path)
@@ -142,21 +196,21 @@ local function ensureSubmodule(info, fsUtils)
 	local added = false
 
 	if not existingName then
-		if fs.isDir(info.Path) or fs.isFile(info.Path) then
+		if FileSystem.isDir(info.Path) or FileSystem.isFile(info.Path) then
 			if isGitRepo(info.Path) then
 				local okAdd, _, err = runGit(buildSubmoduleAddArgs(name, info.Url, info.Path, true))
 				if not okAdd then
-					return { ok = false, status = "git_failed", action = "submodule add", detail = err }
+					return { IsOk = false, Status = "GitFailed", Action = "SubmoduleAdd", Detail = err }
 				end
 				added = true
 			else
-				return { ok = false, status = "path_conflict" }
+				return { IsOk = false, Status = "PathConflict" }
 			end
 		else
 			local forceAdd = hasSubmoduleGitDir(name)
 			local okAdd, _, err = runGit(buildSubmoduleAddArgs(name, info.Url, info.Path, forceAdd))
 			if not okAdd then
-				return { ok = false, status = "git_failed", action = "submodule add", detail = err }
+				return { IsOk = false, Status = "GitFailed", Action = "SubmoduleAdd", Detail = err }
 			end
 			added = true
 		end
@@ -177,21 +231,21 @@ local function ensureSubmodule(info, fsUtils)
 				info.Url,
 			})
 			if not okSet then
-				return { ok = false, status = "git_failed", action = "update url", detail = err }
+				return { IsOk = false, Status = "GitFailed", Action = "UpdateUrl", Detail = err }
 			end
 			runGit({ "submodule", "sync", "--", info.Path })
 		end
 	end
 
-	if not fs.isDir(info.Path) and not fs.isFile(info.Path) then
+	if not FileSystem.isDir(info.Path) and not FileSystem.isFile(info.Path) then
 		local okInit, _, err = runGit({ "submodule", "update", "--init", "--", info.Path })
 		if not okInit then
-			return { ok = false, status = "git_failed", action = "submodule init", detail = err }
+			return { IsOk = false, Status = "GitFailed", Action = "SubmoduleInit", Detail = err }
 		end
 	end
 
 	if not isGitRepo(info.Path) then
-		return { ok = false, status = "not_git_repo" }
+		return { IsOk = false, Status = "NotGitRepo" }
 	end
 
 	local okRemote, remoteUrl = runGit({ "-C", info.Path, "remote", "get-url", "origin" })
@@ -200,37 +254,38 @@ local function ensureSubmodule(info, fsUtils)
 		if remoteUrl ~= info.Url then
 			local okSet, _, err = runGit({ "-C", info.Path, "remote", "set-url", "origin", info.Url })
 			if not okSet then
-				return { ok = false, status = "git_failed", action = "set origin", detail = err }
+				return { IsOk = false, Status = "GitFailed", Action = "SetOrigin", Detail = err }
 			end
 		end
 	end
 
 	local okFetch, _, fetchErr = runGit({ "-C", info.Path, "fetch", "origin", "--prune" })
 	if not okFetch then
-		return { ok = false, status = "git_failed", action = "fetch", detail = fetchErr }
+		return { IsOk = false, Status = "GitFailed", Action = "Fetch", Detail = fetchErr }
 	end
 
 	local okHead, head = runGit({ "-C", info.Path, "rev-parse", "HEAD" })
-	local okRemoteHead, remoteHead = runGit({ "-C", info.Path, "rev-parse", "origin/HEAD" })
-	if okHead and okRemoteHead then
+	local remoteHead = resolveRemoteHead(info.Path)
+	if okHead and remoteHead ~= nil then
 		head = trim(head)
-		remoteHead = trim(remoteHead)
 		if head ~= remoteHead then
 			local okCheckout, _, checkoutErr = runGit({ "-C", info.Path, "checkout", remoteHead })
 			if not okCheckout then
-				return { ok = false, status = "git_failed", action = "checkout", detail = checkoutErr }
+				return { IsOk = false, Status = "GitFailed", Action = "Checkout", Detail = checkoutErr }
 			end
-			return { ok = true, status = "updated", added = added }
+			return { IsOk = true, Status = "Updated", IsAdded = added }
 		end
 	end
 
 	if added then
-		return { ok = true, status = "added" }
+		return { IsOk = true, Status = "Added" }
 	end
 
-	return { ok = true, status = "ok" }
+	return { IsOk = true, Status = "Ok" }
 end
 
-return {
-	ensure = ensureSubmodule,
+local Submodule = {
+	Ensure = ensureSubmodule,
 }
+
+return Submodule

@@ -5,8 +5,8 @@
 
 ## 기능
 
-- `src/base`의 파일을 워크스페이스 루트에 복사합니다. (기존 파일은 덮어씀)
-- `--option <name>` 지정 시 `src/custom/<name>`를 추가로 덮어씁니다.
+- `src/options/base`의 파일을 워크스페이스 루트에 복사합니다. (기존 파일은 덮어씀)
+- `--option <name>` 지정 시 `src/options/<name>`를 추가로 덮어씁니다.
 - Git 저장소라면 `libs/bakery-dev-handbook` 서브모듈을 추가/동기화/업데이트합니다.
 
 ## 사용 방법
@@ -50,10 +50,10 @@ pesde run setup_configs
 
 ## 옵션 구성
 
-`src/custom/<옵션명>` 폴더에 파일을 추가하면 `--option <옵션명>`으로 base 위에 덮어쓸 수 있습니다.
+`src/options/<옵션명>` 폴더에 파일을 추가하면 `--option <옵션명>`으로 base 위에 덮어쓸 수 있습니다.
 
 ## 주의 사항
 
 - 실행 위치가 대상 워크스페이스 루트여야 합니다. (복사 경로는 현재 작업 디렉터리 기준)
-- Git이 없거나 Git 저장소가 아니면 서브모듈 처리는 건너뛰거나 실패할 수 있습니다.
+- Git이 없거나 Git 저장소가 아니면 서브모듈 처리를 건너뜁니다.
 - `libs/bakery-dev-handbook` 경로에 일반 폴더가 있으면 서브모듈 추가가 실패합니다.

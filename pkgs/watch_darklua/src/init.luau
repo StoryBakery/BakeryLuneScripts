@@ -1,18 +1,19 @@
---> Lune 기반 watch 스크립트: src → darklua_build 변환, 자산 복제, Rojo 프로젝트 리라이팅
--- 필요: lune, darklua, rojo (PATH에 설치)
+--[[
+	src 디렉터리를 감시해 Darklua 변환과 자산 복사, Rojo 프로젝트 리라이팅을 수행하는 모듈입니다.
+]]
 
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local serde = require("@lune/serde")
 local task = require("@lune/task")
 
--- ---- 기본 설정 (환경변수/인자에서 재정의 가능) -------------------------
+-- 기본 설정 (환경변수와 인자에서 재정의 가능)
 local SRC_DIR = "src"
 local OUT_DIR = "out"
 local PROJECT_IN = "default.project.json"
 local PROJECT_OUT = "place.project.json"
 local DARKLUA_BIN = process.env.DARKLUA or "darklua"
-local DARKLUA_CONFIG -- ex) ".darklua.json" or ".darklua.json5"
+local DARKLUA_CONFIG -- 예: ".darklua.json" 또는 ".darklua.json5"
 local POLL = 0.25 -- 초
 local PRUNE = true
 local VERBOSE = false
@@ -20,7 +21,7 @@ local SERVE = false
 local GEN_SOURCEMAP = true
 local SOURCEMAP_OUT = "sourcemap.build.json"
 
--- ---- 인자 파싱 ---------------------------------------------------------
+-- 인자 파싱
 do
 	local i = 1
 	while i <= #process.args do
@@ -59,10 +60,11 @@ do
 	end
 end
 
--- ---- 유틸 --------------------------------------------------------------
+-- 유틸
 local function endsWith(s, suffix)
 	return #s >= #suffix and s:sub(-#suffix) == suffix
 end
+
 local function join(a, b)
 	if a == "" then
 		return b
@@ -72,6 +74,7 @@ local function join(a, b)
 		return a .. "/" .. b
 	end
 end
+
 local function dirname(path)
 	return (path:match("^(.*)/[^/]+$")) or ""
 end
@@ -103,7 +106,7 @@ local function ensureParent(path)
 end
 
 local function isCodeFile(p)
-	-- *.lua (server/client 포함), *.luau
+	-- *.lua (서버/클라이언트 포함), *.luau
 	return endsWith(p, ".lua") or endsWith(p, ".luau")
 end
 
@@ -114,8 +117,9 @@ local ASSET_SUFFIXES = {
 	[".rbxm"] = true,
 	[".rbxmx"] = true,
 }
+
 local function isAssetFile(p)
-	for suf in pairs(ASSET_SUFFIXES) do
+	for suf in ASSET_SUFFIXES do
 		if endsWith(p, suf) then
 			return true
 		end
@@ -145,7 +149,7 @@ local function walkFiles(root, acc)
 end
 
 local function relFromSrc(abs)
-	-- "src/..." → "..."
+	-- "src/..."을 "..."로 변환합니다.
 	local prefix = SRC_DIR .. "/"
 	if abs:sub(1, #prefix) == prefix then
 		return abs:sub(#prefix + 1)
@@ -163,7 +167,7 @@ local function copyFile(src, dst)
 		fs.copy(src, dst, { overwrite = true })
 	end)
 	if not ok then
-		-- 플랫폼 호환을 위해 fallback
+		-- 플랫폼 호환을 위한 대체 복사 처리
 		fs.writeFile(dst, fs.readFile(src))
 	end
 end
@@ -175,13 +179,20 @@ local function runDarklua(inPath, outPath)
 		table.insert(params, "--config")
 		table.insert(params, DARKLUA_CONFIG)
 	end
-	local stdioKind = VERBOSE and "inherit" or "default"
+	local stdioKind = if VERBOSE
+		then "inherit"
+		else "default"
 	local result = process.exec(DARKLUA_BIN, params, { stdio = { stdout = stdioKind, stderr = "default" } })
 	if result.ok then
 		return true
 	else
-		local msg = (result.stderr and #result.stderr > 0) and result.stderr or result.stdout or "(no details)"
-		print(("[경고] darklua 실패: %s\n└─ %s"):format(inPath, msg))
+		local msg = "(no details)"
+		if result.stderr ~= nil and #result.stderr > 0 then
+			msg = result.stderr
+		elseif result.stdout ~= nil and #result.stdout > 0 then
+			msg = result.stdout
+		end
+		print(`[Warning] darklua failed: {inPath}\n- {msg}`)
 		-- 원본 그대로 복사
 		copyFile(inPath, outPath)
 		return false
@@ -197,9 +208,13 @@ local function snapshot()
 	local map = {}
 	for _, p in files do
 		local md = fs.metadata(p)
+		local size = 0
+		if fs.isFile(p) then
+			size = #fs.readFile(p)
+		end
 		map[p] = {
 			mtime = md.modifiedAt.unixTimestampMillis,
-			size = (fs.isFile(p) and #fs.readFile(p)) or 0,
+			size = size,
 		}
 	end
 	return map
@@ -212,11 +227,10 @@ local function buildOne(absSrc)
 	elseif isAssetFile(absSrc) then
 		copyFile(absSrc, dst)
 		if VERBOSE then
-			print("[asset] -> " .. dst)
+			print(`[Asset] -> {dst}`)
 		end
-	else
-		-- Rojo에 필요 없는 파일은 무시 (예: .md, 에디터 설정 등)
 	end
+	-- Rojo에 필요 없는 파일은 무시합니다. (예: .md, 에디터 설정 등)
 end
 
 local function removeOutFor(absSrcRel)
@@ -226,17 +240,17 @@ local function removeOutFor(absSrcRel)
 			fs.removeFile(dst)
 		end)
 		if not ok and VERBOSE then
-			print("[정리 실패] " .. tostring(err))
+			print(`[Warning] Cleanup failed: {tostring(err)}`)
 		end
 	end
 end
 
--- default.project.json → default.build.project.json ($path rebasing: src → darklua_build)
+-- default.project.json의 $path를 SRC_DIR에서 OUT_DIR로 재매핑합니다.
 local function rebasePathsInTree(node)
 	if type(node) ~= "table" then
 		return
 	end
-	for k, v in pairs(node) do
+	for k, v in node do
 		if k == "$path" and type(v) == "string" then
 			if v == SRC_DIR then
 				node[k] = OUT_DIR
@@ -251,7 +265,7 @@ end
 
 local function writeBuildProject()
 	if not fs.isFile(PROJECT_IN) then
-		print("[정보] " .. PROJECT_IN .. " 이(가) 없어 Rojo 프로젝트 리라이팅은 건너뜁니다.")
+		print(`[Info] "{PROJECT_IN}" not found. Skipping Rojo project rewrite.`)
 		return
 	end
 	local src = fs.readFile(PROJECT_IN)
@@ -259,7 +273,7 @@ local function writeBuildProject()
 		return serde.decode("json", src)
 	end)
 	if not ok then
-		print("[경고] " .. PROJECT_IN .. " 파싱 실패. 원문: " .. tostring(data))
+		print(`[Warning] Failed to parse "{PROJECT_IN}". Raw error: {tostring(data)}`)
 		return
 	end
 	if type(data.tree) == "table" then
@@ -267,7 +281,7 @@ local function writeBuildProject()
 	end
 	mkdirp(dirname(PROJECT_OUT))
 	fs.writeFile(PROJECT_OUT, serde.encode("json", data, true))
-	print("[Rojo] " .. PROJECT_OUT .. " 생성 완료")
+	print(`[Rojo] Generated {PROJECT_OUT}`)
 end
 
 local function startRojoServe()
@@ -277,8 +291,8 @@ local function startRojoServe()
 	if not fs.isFile(PROJECT_OUT) then
 		writeBuildProject()
 	end
-	print("[Rojo] serve 시작: " .. PROJECT_OUT)
-	-- 백그라운드로 띄우고 계속 watch
+	print(`[Rojo] Serve started: {PROJECT_OUT}`)
+	-- 백그라운드로 실행하고 감시를 이어갑니다.
 	process.create("rojo", { "serve", PROJECT_OUT })
 end
 
@@ -289,8 +303,8 @@ local function startSourcemapWatch()
 	if not fs.isFile(PROJECT_OUT) then
 		writeBuildProject()
 	end
-	print("[Rojo] sourcemap watch 시작: " .. PROJECT_OUT .. " → " .. SOURCEMAP_OUT)
-	-- 최신 Rojo는 sourcemap --watch 지원
+	print(`[Rojo] Sourcemap watch started: {PROJECT_OUT} -> {SOURCEMAP_OUT}`)
+	-- 최신 Rojo는 sourcemap --watch를 지원합니다.
 	process.create("rojo", {
 		"sourcemap",
 		PROJECT_OUT,
@@ -300,25 +314,25 @@ local function startSourcemapWatch()
 	})
 end
 
--- ---- 메인 ---------------------------------------------------------------
+-- 메인
 local function fullRebuild()
-	print(("[빌드] 초기 빌드 시작 (%s → %s)…"):format(SRC_DIR, OUT_DIR))
+	print(`[Build] Initial build started ({SRC_DIR} -> {OUT_DIR})...`)
 	local cur = snapshot()
-	for abs in pairs(cur) do
+	for abs in cur do
 		buildOne(abs)
 	end
-	print("[빌드] 초기 빌드 완료")
+	print("[Build] Initial build completed.")
 	return cur
 end
 
 local function watchLoop(prev)
-	print("[워치] 변경 감시 시작")
+	print("[Watch] Started watching for changes.")
 	while true do
 		task.wait(POLL)
 		local now = snapshot()
 
 		-- 생성/변경
-		for abs, meta in pairs(now) do
+		for abs, meta in now do
 			local last = prev[abs]
 			if not last or last.mtime ~= meta.mtime or last.size ~= meta.size then
 				buildOne(abs)
@@ -327,7 +341,7 @@ local function watchLoop(prev)
 
 		-- 삭제된 파일 정리
 		if PRUNE then
-			for abs in pairs(prev) do
+			for abs in prev do
 				if not now[abs] then
 					removeOutFor(abs)
 				end

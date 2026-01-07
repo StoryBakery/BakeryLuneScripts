@@ -1,82 +1,88 @@
 --> 설정 파일과 서브모듈을 워크스페이스 루트에 설치하는 Lune 스크립트입니다.
 --[[
 	SetupConfigs
-	base 설정 파일을 워크스페이스 루트에 설치합니다.
-	--option 을 지정하면 base + custom/<option> 을 순서대로 적용합니다.
+	base 옵션 파일을 워크스페이스 루트에 설치합니다.
+	--option 을 지정하면 base + options/<option> 을 순서대로 적용합니다.
 	bakery-dev-handbook 서브모듈을 libs 경로에 유지합니다.
 ]]
 
-local process = require("@lune/process")
+local Process = require("@lune/process")
 
 local function loadModule(name: string)
 	local modulePath = "./src/modules/" .. name
 	local ok, moduleOrErr = pcall(require, modulePath)
 	if not ok then
-		print(`[오류] 모듈 "{name}" 를 불러오지 못했습니다.`)
+		print(`[Error] Failed to load module "{name}".`)
 		print(tostring(moduleOrErr))
-		process.exit(1)
+		Process.exit(1)
 	end
 	return moduleOrErr
 end
 
 local Config = loadModule("Config")
-local FsUtils = loadModule("FsUtils")
-local parseOption = loadModule("Args")
+local FileSystemUtils = loadModule("FileSystemUtils")
+local ParseOption = loadModule("ParseOption")
 local Installer = loadModule("Installer")
 local Submodule = loadModule("Submodule")
 
-local optionName = parseOption(Config.DefaultOption)
+local optionName = ParseOption(Config.DefaultOptionName)
 
-local okInstall, installResult = Installer.install(Config, FsUtils, optionName)
+local okInstall, installResult = Installer.Install(Config, FileSystemUtils, optionName)
 if not okInstall then
-	if installResult.code == "missing_source_root" then
-		print("[오류] setup_configs 소스 경로를 찾지 못했습니다.")
-	elseif installResult.code == "missing_base_dir" then
-		print(`[오류] base 디렉터리를 찾지 못했습니다: {installResult.baseRoot}`)
-	elseif installResult.code == "missing_option" then
-		print(`[오류] 옵션 "{installResult.optionName}" 디렉터리를 찾지 못했습니다.`)
-		local available = installResult.available or {}
-		if #available > 0 then
-			print("사용 가능한 옵션: " .. table.concat(available, ", "))
+	if installResult.Code == "MissingSourceRoot" then
+		print("[Error] Failed to locate setup_configs source root.")
+	elseif installResult.Code == "MissingBaseOption" then
+		print(`[Error] Failed to find base option directory: {installResult.BaseRoot}`)
+	elseif installResult.Code == "MissingOption" then
+		print(`[Error] Failed to find option "{installResult.OptionName}".`)
+		local availableOptions = installResult.AvailableOptions or {}
+		if #availableOptions > 0 then
+			print(`[Info] Available options: {table.concat(availableOptions, ", ")}`)
 		end
 	else
-		print("[오류] 설정 파일 설치에 실패했습니다.")
+		print("[Error] Config install failed.")
 	end
-	process.exit(1)
+	Process.exit(1)
 end
 
-if installResult.optionName ~= Config.DefaultOption then
-	print(
-		`[설치] base + 옵션 "{installResult.optionName}" 적용 완료 (base {installResult.baseCount}개, 옵션 {installResult.optionCount}개)`
-	)
+if installResult.OptionName ~= Config.DefaultOptionName then
+	local installMessage = `[Install] Base + option "{installResult.OptionName}" applied \z
+	(base {installResult.BaseCount}, option {installResult.OptionCount})`
+	print(installMessage)
 else
-	print(`[설치] base 적용 완료 ({installResult.baseCount}개)`)
+	print(`[Install] Base applied ({installResult.BaseCount})`)
 end
 
-local submoduleResult = Submodule.ensure(Config.Submodule, FsUtils)
+local submoduleResult = Submodule.Ensure(Config.Submodule, FileSystemUtils)
 local submodulePath = Config.Submodule.Path
 
-if not submoduleResult.ok then
-	if submoduleResult.status == "path_conflict" then
-		print(`[오류] "{submodulePath}" 경로에 기존 폴더가 있어 서브모듈을 추가하지 못했습니다.`)
-	elseif submoduleResult.status == "not_git_repo" then
-		print(`[오류] "{submodulePath}" 경로가 Git 저장소가 아닙니다.`)
-	elseif submoduleResult.status == "git_failed" then
-		local action = submoduleResult.action or "git"
-		local detail = submoduleResult.detail or ""
-		print(`[오류] git 명령 실패 ({action}): {detail}`)
+if not submoduleResult.IsOk then
+	if submoduleResult.Status == "PathConflict" then
+		print(`[Error] Path "{submodulePath}" already exists and cannot be used for a submodule.`)
+	elseif submoduleResult.Status == "NotGitRepo" then
+		print(`[Error] Path "{submodulePath}" is not a Git repository.`)
+	elseif submoduleResult.Status == "GitFailed" then
+		local action = submoduleResult.Action or "Git"
+		local detail = submoduleResult.Detail or ""
+		print(`[Error] Git command failed ({action}): {detail}`)
 	else
-		print(`[오류] "{submodulePath}" 서브모듈 처리에 실패했습니다.`)
+		print(`[Error] Failed to process submodule "{submodulePath}".`)
 	end
-	process.exit(1)
+	Process.exit(1)
 end
 
-if submoduleResult.status == "skipped" then
-	print("[정보] Git 저장소가 아니어서 서브모듈 설치를 건너뜁니다.")
-elseif submoduleResult.status == "added" then
-	print(`[서브모듈] "{submodulePath}" 추가 완료`)
-elseif submoduleResult.status == "updated" then
-	print(`[서브모듈] "{submodulePath}" 업데이트 완료`)
-elseif submoduleResult.status == "ok" then
-	print(`[서브모듈] "{submodulePath}" 최신 상태입니다.`)
+if submoduleResult.Status == "Skipped" then
+	if submoduleResult.Reason == "MissingGit" then
+		print("[Info] Git is not available. Skipping submodule setup.")
+	elseif submoduleResult.Reason == "NotGitRepo" then
+		print("[Info] Not a Git repository. Skipping submodule setup.")
+	else
+		print("[Info] Skipping submodule setup.")
+	end
+elseif submoduleResult.Status == "Added" then
+	print(`[Submodule] "{submodulePath}" added`)
+elseif submoduleResult.Status == "Updated" then
+	print(`[Submodule] "{submodulePath}" updated`)
+elseif submoduleResult.Status == "Ok" then
+	print(`[Submodule] "{submodulePath}" is up to date`)
 end

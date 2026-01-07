@@ -1,85 +1,100 @@
-local fs = require("@lune/fs")
+--[[
+	옵션 기반 설정 파일을 설치하는 모듈입니다.
+]]
 
-local function listOptions(customRoot: string, fsUtils): { string }
-	local options: { string } = {}
-	if not fs.isDir(customRoot) then
-		return options
+local FileSystem = require("@lune/fs")
+
+local function listOptionNames(optionsRoot: string, fileSystemUtils): { string }
+	local optionNames: { string } = {}
+	if not FileSystem.isDir(optionsRoot) then
+		return optionNames
 	end
 
-	local ok, entries = pcall(fs.readDir, customRoot)
+	local ok, entries = pcall(FileSystem.readDir, optionsRoot)
 	if not ok or entries == nil then
-		return options
+		return optionNames
 	end
 
-	for _, entry in ipairs(entries) do
-		local path = fsUtils.join(customRoot, entry)
-		if fs.isDir(path) then
-			table.insert(options, entry)
+	for _, entry in entries do
+		local path = fileSystemUtils.JoinPath(optionsRoot, entry)
+		if FileSystem.isDir(path) then
+			table.insert(optionNames, entry)
 		end
 	end
 
-	table.sort(options)
-	return options
+	table.sort(optionNames)
+	return optionNames
 end
 
-local function resolveSourceRoot(candidates: { string }, baseDirName: string, fsUtils): string?
-	for _, candidate in ipairs(candidates) do
-		local basePath = fsUtils.join(candidate, baseDirName)
-		if fs.isDir(basePath) then
+local function resolveSourceRoot(
+	candidates: { string },
+	optionsRootName: string,
+	defaultOptionName: string,
+	fileSystemUtils
+): string?
+	for _, candidate in candidates do
+		local optionsRoot = fileSystemUtils.JoinPath(candidate, optionsRootName)
+		local baseRoot = fileSystemUtils.JoinPath(optionsRoot, defaultOptionName)
+		if FileSystem.isDir(baseRoot) then
 			return candidate
 		end
 	end
 	return nil
 end
 
-local function applyRoot(root: string, fsUtils): number
-	local files = fsUtils.collectFiles(root)
-	for _, item in ipairs(files) do
-		fsUtils.copyFile(item.src, item.rel)
+local function applyRoot(root: string, fileSystemUtils): number
+	local files = fileSystemUtils.CollectFiles(root)
+	for _, item in files do
+		fileSystemUtils.CopyFile(item.SourcePath, item.RelativePath)
 	end
 	return #files
 end
 
-local function install(config, fsUtils, optionName: string)
-	local srcRoot = resolveSourceRoot(config.SourceCandidates, config.BaseDirName, fsUtils)
+local function install(config, fileSystemUtils, optionName: string)
+	local srcRoot = resolveSourceRoot(
+		config.SourceCandidates,
+		config.OptionsRootName,
+		config.DefaultOptionName,
+		fileSystemUtils
+	)
 	if not srcRoot then
-		return false, { code = "missing_source_root" }
+		return false, { Code = "MissingSourceRoot" }
 	end
 
-	local baseRoot = fsUtils.join(srcRoot, config.BaseDirName)
-	if not fs.isDir(baseRoot) then
-		return false, { code = "missing_base_dir", baseRoot = baseRoot }
+	local optionsRoot = fileSystemUtils.JoinPath(srcRoot, config.OptionsRootName)
+	local baseRoot = fileSystemUtils.JoinPath(optionsRoot, config.DefaultOptionName)
+	if not FileSystem.isDir(baseRoot) then
+		return false, { Code = "MissingBaseOption", BaseRoot = baseRoot }
 	end
 
-	local customRoot = fsUtils.join(srcRoot, config.CustomDirName)
 	local optionRoot = nil
-
-	if optionName ~= config.DefaultOption then
-		optionRoot = fsUtils.join(customRoot, optionName)
-		if not fs.isDir(optionRoot) then
-			local available = listOptions(customRoot, fsUtils)
+	if optionName ~= config.DefaultOptionName then
+		optionRoot = fileSystemUtils.JoinPath(optionsRoot, optionName)
+		if not FileSystem.isDir(optionRoot) then
+			local availableOptions = listOptionNames(optionsRoot, fileSystemUtils)
 			return false, {
-				code = "missing_option",
-				optionName = optionName,
-				available = available,
+				Code = "MissingOption",
+				OptionName = optionName,
+				AvailableOptions = availableOptions,
 			}
 		end
 	end
 
-	local baseCount = applyRoot(baseRoot, fsUtils)
+	local baseCount = applyRoot(baseRoot, fileSystemUtils)
 	local optionCount = 0
-
 	if optionRoot ~= nil then
-		optionCount = applyRoot(optionRoot, fsUtils)
+		optionCount = applyRoot(optionRoot, fileSystemUtils)
 	end
 
 	return true, {
-		baseCount = baseCount,
-		optionCount = optionCount,
-		optionName = optionName,
+		BaseCount = baseCount,
+		OptionCount = optionCount,
+		OptionName = optionName,
 	}
 end
 
-return {
-	install = install,
+local Installer = {
+	Install = install,
 }
+
+return Installer

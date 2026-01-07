@@ -1,7 +1,10 @@
+--[[
+	설정 옵션과 소스 경로, 서브모듈 정보를 관리하는 모듈입니다.
+]]
+
 local Config = {
-	DefaultOption = "base",
-	BaseDirName = "base",
-	CustomDirName = "custom",
+	DefaultOptionName = "base",
+	OptionsRootName = "options",
 	SourceCandidates = {
 		"pkgs/setup_configs/src",
 		".pesde/setup_configs/src",

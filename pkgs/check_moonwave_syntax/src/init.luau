@@ -1,3 +1,7 @@
+--[[
+	문서 내 Moonwave 금지 태그를 검사하는 모듈입니다.
+]]
+
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 
@@ -28,7 +32,7 @@ local FORBIDDEN_TAGS = {
 			"@module",
 			"@constructor",
 		},
-		reason = "document-based-comment.md 에 정의되지 않은 moonwave 태그",
+		reason = "Forbidden moonwave tag not defined in document-based-comment.md",
 	},
 }
 
@@ -40,7 +44,7 @@ local function joinPath(a: string, b: string): string
 end
 
 local function shouldCheckFile(path: string): boolean
-	for _, ext in ipairs(CHECK_EXTENSIONS) do
+	for _, ext in CHECK_EXTENSIONS do
 		if path:sub(-#ext) == ext then
 			return true
 		end
@@ -55,8 +59,8 @@ local function inspectFile(path: string, violations)
 	end
 
 	local lines = string.split(contents, "\n")
-	for lineNumber, line in ipairs(lines) do
-		for _, forbidden in ipairs(FORBIDDEN_TAGS) do
+	for lineNumber, line in lines do
+		for _, forbidden in FORBIDDEN_TAGS do
 			local rawTokens = forbidden.token
 			if rawTokens == nil then
 				continue
@@ -67,7 +71,7 @@ local function inspectFile(path: string, violations)
 				tokens = { rawTokens }
 			end
 
-			for _, token in ipairs(tokens) do
+			for _, token in tokens do
 				if token ~= nil and line:find(token, 1, true) then
 					table.insert(violations, {
 						path = path,
@@ -89,7 +93,7 @@ local function traverse(dir: string, violations)
 		return
 	end
 
-	for _, entry in ipairs(entries) do
+	for _, entry in entries do
 		if entry == "." or entry == ".." then
 			continue
 		end
@@ -109,7 +113,7 @@ end
 local function main()
 	local violations = {}
 
-	for _, root in ipairs(ROOTS) do
+	for _, root in ROOTS do
 		if fs.isDir(root) then
 			traverse(root, violations)
 		elseif fs.isFile(root) and shouldCheckFile(root) then
@@ -118,25 +122,19 @@ local function main()
 	end
 
 	if #violations > 0 then
-		print("금지된 moonwave 태그가 발견되었습니다:")
-		for _, violation in ipairs(violations) do
-			print(string.format(
-				"%s:%d: %s (%s)",
-				violation.path,
-				violation.line,
-				violation.snippet,
-				violation.reason
-			))
+		print("Forbidden moonwave tags were found:")
+		for _, violation in violations do
+			print(`{violation.path}:{violation.line}: {violation.snippet} ({violation.reason})`)
 		end
 		process.exit(1)
 	else
-		print("금지된 moonwave 태그가 없습니다.")
+		print("No forbidden moonwave tags were found.")
 	end
 end
 
 local ok, err = pcall(main)
 if not ok then
-	print(tostring(err))
+	print(`Unexpected error: {tostring(err)}`)
 	process.exit(1)
 end
 

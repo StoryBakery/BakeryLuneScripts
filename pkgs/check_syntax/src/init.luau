@@ -1,8 +1,5 @@
---> 프로젝트 전역의 Luau 스크립트를 순회하며 문법 오류를 검출하는 Lune 유틸리티입니다.
 --[[
-	CheckSyntax
-	Luau 소스를 전부 컴파일 시뮬레이션해 문법 오류를 조기에 탐지합니다.
-	CI 및 로컬 개발 환경에서 동일한 검증을 수행하기 위한 스크립트입니다.
+	프로젝트 Luau 스크립트의 문법과 린트를 검사하는 모듈입니다.
 ]]
 
 local fs = require("@lune/fs")
@@ -14,11 +11,15 @@ type FilePaths = { string }
 local DEFAULT_ROOTS: { string } = {
 	"src",
 	".lune",
+	"pkgs",
 }
 
 local LSP_IGNORE_GLOBS: { string } = {
 	"roblox_packages/**",
 }
+
+local SKIP_LSP = process.env.CHECK_SYNTAX_SKIP_LSP == "1"
+	or process.env.CHECK_SYNTAX_SKIP_LSP == "true"
 
 local function join(a: string, b: string): string
 	if a == "" or a == "." then
@@ -58,7 +59,7 @@ local function collectFromDirectory(dir: string, accumulator: FilePaths)
 		return
 	end
 
-	for _, entry in ipairs(entries) do
+	for _, entry in entries do
 		local path = join(dir, entry)
 		if fs.isFile(path) then
 			addScriptFile(path, accumulator)
@@ -70,10 +71,12 @@ end
 
 local function resolveRoots(): FilePaths
 	local resolvedRoots: FilePaths = {}
-	local candidates = (#process.args > 0) and process.args or DEFAULT_ROOTS
+	local candidates = if #process.args > 0
+		then process.args
+		else DEFAULT_ROOTS
 	local seen = {}
 
-	for _, candidate in ipairs(candidates) do
+	for _, candidate in candidates do
 		if not seen[candidate] then
 			seen[candidate] = true
 
@@ -92,7 +95,7 @@ end
 local function collectFiles(roots: FilePaths): FilePaths
 	local collected: FilePaths = {}
 
-	for _, root in ipairs(roots) do
+	for _, root in roots do
 		if fs.isDir(root) then
 			collectFromDirectory(root, collected)
 		elseif fs.isFile(root) then
@@ -106,7 +109,7 @@ end
 local function joinMany(base: string, segments: { string }): string
 	local path = base
 
-	for _, segment in ipairs(segments) do
+	for _, segment in segments do
 		path = join(path, segment)
 	end
 
@@ -132,7 +135,7 @@ local function resolveLuauDefinitionsFile(): string?
 			return expanded
 		end
 
-		print(`[luau-lsp] LUAU_LSP_DEFINITIONS 경로 "{expanded}" 를 찾을 수 없습니다.`)
+		print(`[luau-lsp] LUAU_LSP_DEFINITIONS path "{expanded}" was not found.`)
 	end
 
 	local candidates: { string } = {}
@@ -153,7 +156,7 @@ local function resolveLuauDefinitionsFile(): string?
 		table.insert(candidates, appData .. "\\luau-lsp\\roblox.d.luau")
 	end
 
-	for _, candidate in ipairs(candidates) do
+	for _, candidate in candidates do
 		if candidate ~= nil and fs.isFile(candidate) then
 			return candidate
 		end
@@ -174,7 +177,7 @@ end
 
 local function normalizeExecError(err: any): string
 	if err == nil then
-		return "알 수 없는 오류입니다."
+		return "Unknown error."
 	end
 
 	if type(err) == "string" then
@@ -185,7 +188,7 @@ local function normalizeExecError(err: any): string
 end
 
 local function runCommand(binary: string, args: { string }, description: string): boolean
-	print(`{description}를 실행합니다...`)
+	print(`Running {description}...`)
 
 	local okExec, resultOrErr = pcall(process.exec, binary, args, {
 		capture = true,
@@ -197,16 +200,21 @@ local function runCommand(binary: string, args: { string }, description: string)
 
 	if not okExec then
 		local message = normalizeExecError(resultOrErr)
-		print(`{description} 명령을 실행하지 못했습니다: {message}`)
-		print("도구가 PATH 에 설치되어 있는지 확인하세요.")
+		print(`Failed to run {description}: {message}`)
+		print("Make sure the tool is installed in PATH.")
 		return false
 	end
 
 	local result = resultOrErr
 	if not result.ok then
-		local logOutput = result.stderr ~= "" and result.stderr or result.stdout
+		local logOutput = ""
+		if result.stderr ~= nil and result.stderr ~= "" then
+			logOutput = result.stderr
+		elseif result.stdout ~= nil then
+			logOutput = result.stdout
+		end
 
-		print(`{description} 검사에서 문제가 발견되었습니다.`)
+		print(`Issues were found during {description}.`)
 		if logOutput ~= nil and logOutput ~= "" then
 			print(logOutput)
 		end
@@ -236,22 +244,22 @@ local function runLuauLanguageServer(targets: FilePaths): boolean
 		table.insert(args, definitionsPath)
 	end
 
-	for _, glob in ipairs(LSP_IGNORE_GLOBS) do
+	for _, glob in LSP_IGNORE_GLOBS do
 		table.insert(args, "--ignore")
 		table.insert(args, glob)
 	end
 
-	for _, target in ipairs(targets) do
+	for _, target in targets do
 		table.insert(args, target)
 	end
 
-	return runCommand("luau-lsp", args, "Luau Language Server 분석")
+	return runCommand("luau-lsp", args, "Luau Language Server analysis")
 end
 
 local function runSeleneLint(targets: FilePaths): boolean
 	local args: { string } = {}
 
-	for _, target in ipairs(targets) do
+	for _, target in targets do
 		table.insert(args, target)
 	end
 
@@ -265,7 +273,7 @@ end
 local function compileFiles(paths: FilePaths): (boolean, FilePaths)
 	local failures: FilePaths = {}
 
-	for _, path in ipairs(paths) do
+	for _, path in paths do
 		local okRead, src = pcall(fs.readFile, path)
 
 		if not okRead or src == nil then
@@ -293,24 +301,28 @@ local files = collectFiles(roots)
 local success, failures = compileFiles(files)
 
 if not success then
-	for _, message in ipairs(failures) do
+	for _, message in failures do
 		print(message)
 	end
 
 	process.exit(1)
 else
-	print(`Luau 컴파일 검사를 통과했습니다. 총 {#files}개 파일.`)
+	print(`Luau compile check passed. Total files: {#files}.`)
 end
 
-if not runLuauLanguageServer(roots) then
-	process.exit(1)
-end
+if SKIP_LSP then
+	print("Skipping Luau Language Server analysis because CHECK_SYNTAX_SKIP_LSP is set.")
+else
+	if not runLuauLanguageServer(roots) then
+		process.exit(1)
+	end
 
-print("Luau Language Server 분석을 통과했습니다.")
+	print("Luau Language Server analysis passed.")
+end
 
 if not runSeleneLint(roots) then
 	process.exit(1)
 end
 
-print("Selene 검사를 통과했습니다.")
-print("모든 Luau 관련 검사를 성공적으로 마쳤습니다.")
+print("Selene check passed.")
+print("All Luau checks completed successfully.")
